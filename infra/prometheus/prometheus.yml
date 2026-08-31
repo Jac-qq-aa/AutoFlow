@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 10s
+scrape_configs:
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs: [{ targets: ['gateway-service:8080'] }]
+  - job_name: order
+    metrics_path: /actuator/prometheus
+    static_configs: [{ targets: ['order-service:8082'] }]
+  - job_name: inventory
+    metrics_path: /actuator/prometheus
+    static_configs: [{ targets: ['inventory-service:8083'] }]
+  - job_name: fulfillment
+    metrics_path: /actuator/prometheus
+    static_configs: [{ targets: ['fulfillment-service:8084'] }]
+

@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+.mvn/wrapper/dists
+**/node_modules
+**/dist
+**/target/*.jar.original
+**/target/classes
+**/target/generated-sources
+**/target/generated-test-sources
+**/target/maven-archiver
+**/target/maven-status
+**/target/surefire-reports
+**/target/test-classes
+work
+outputs

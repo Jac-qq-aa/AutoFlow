@@ -1,0 +1,40 @@
+server:
+  port: 8083
+spring:
+  application:
+    name: inventory-service
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+  datasource:
+    url: ${INVENTORY_DB_URL:jdbc:mysql://localhost:3306/autoflow_inventory?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
+    username: ${DB_USERNAME:autoflow}
+    password: ${DB_PASSWORD:autoflow123}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
+      discovery:
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+      config:
+        username: ${NACOS_USERNAME:}
+        password: ${NACOS_PASSWORD:}
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+autoflow:
+  messaging:
+    enabled: ${MESSAGING_ENABLED:true}
+    endpoints: ${ROCKETMQ_ENDPOINTS:localhost:8081}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
