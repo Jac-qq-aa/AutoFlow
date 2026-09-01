@@ -1,0 +1,21 @@
+groups:
+  - name: autoflow-reliability
+    rules:
+      - alert: AutoFlowServiceDown
+        expr: up{job=~"gateway|order|inventory|fulfillment"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations:
+          summary: "AutoFlow service {{ $labels.job }} is unavailable"
+      - alert: AutoFlowDeadLettersPending
+        expr: autoflow_dead_letters_pending > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "AutoFlow {{ $labels.job }} has unreplayed dead letters"
+      - alert: AutoFlowOutboxBacklog
+        expr: autoflow_outbox_pending > 20
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "AutoFlow {{ $labels.job }} outbox backlog is growing"

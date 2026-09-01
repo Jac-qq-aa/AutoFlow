@@ -1,6 +1,7 @@
 package io.autoflow.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,5 +27,10 @@ public class MessagingAutoConfiguration {
     @Bean
     DeadLetterService deadLetterService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper, EventPublisher publisher) {
         return new DeadLetterService(jdbcTemplate, objectMapper, publisher);
+    }
+
+    @Bean
+    BusinessMetrics businessMetrics(JdbcTemplate jdbcTemplate, MeterRegistry meterRegistry) {
+        return new BusinessMetrics(jdbcTemplate, meterRegistry);
     }
 }

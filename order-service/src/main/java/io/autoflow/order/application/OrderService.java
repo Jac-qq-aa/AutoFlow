@@ -2,6 +2,7 @@ package io.autoflow.order.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import io.autoflow.common.error.BusinessException;
+import io.autoflow.common.error.AccessDeniedException;
 import io.autoflow.messaging.EventTypes;
 import io.autoflow.order.domain.OrderStateMachine;
 import io.autoflow.order.domain.OrderStatus;
@@ -33,7 +34,7 @@ public class OrderService {
     public SalesOrderEntity create(CreateOrderCommand command, RequestUser user) {
         user.requireAnyRole("SALES", "STORE_MANAGER", "ADMIN");
         if (!user.isAdmin() && !user.storeId().equals(command.storeId())) {
-            throw new BusinessException("STORE_ACCESS_DENIED", "Sales users can only create orders for their own store");
+            throw new AccessDeniedException("STORE_ACCESS_DENIED", "Sales users can only create orders for their own store");
         }
         var entity = new SalesOrderEntity();
         entity.orderId = UUID.randomUUID().toString();
@@ -58,7 +59,7 @@ public class OrderService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = "orders", key = "#orderId")
+    @CacheEvict(cacheNames = "orders", allEntries = true)
     public SalesOrderEntity approve(String orderId, RequestUser user) {
         user.requireAnyRole("STORE_MANAGER", "ADMIN");
         var order = requireAccessible(orderId, user);
@@ -70,8 +71,9 @@ public class OrderService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = "orders", key = "#orderId")
+    @CacheEvict(cacheNames = "orders", allEntries = true)
     public SalesOrderEntity requestPayment(String orderId, RequestUser user, String scenario) {
+        user.requireAnyRole("SALES", "STORE_MANAGER", "ADMIN");
         var order = requireAccessible(orderId, user);
         stateMachine.requirePaymentAllowed(OrderStatus.valueOf(order.status));
         ensureUpdated(mapper.markPaymentProcessing(orderId));
@@ -81,8 +83,9 @@ public class OrderService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = "orders", key = "#orderId")
+    @CacheEvict(cacheNames = "orders", allEntries = true)
     public SalesOrderEntity cancel(String orderId, RequestUser user, String reason) {
+        user.requireAnyRole("SALES", "STORE_MANAGER", "ADMIN");
         var order = requireAccessible(orderId, user);
         stateMachine.requireCancellationAllowed(OrderStatus.valueOf(order.status));
         ensureUpdated(mapper.transition(orderId, order.status, OrderStatus.CANCELLING.name()));
@@ -94,7 +97,7 @@ public class OrderService {
         return require(orderId);
     }
 
-    @Cacheable(cacheNames = "orders", key = "#orderId")
+    @Cacheable(cacheNames = "orders", key = "#user.storeId() + ':' + #orderId")
     public SalesOrderEntity get(String orderId, RequestUser user) {
         return requireAccessible(orderId, user);
     }
@@ -110,7 +113,7 @@ public class OrderService {
     private SalesOrderEntity requireAccessible(String orderId, RequestUser user) {
         var order = require(orderId);
         if (!user.isAdmin() && !user.storeId().equals(order.storeId)) {
-            throw new BusinessException("ORDER_ACCESS_DENIED", "The order belongs to another store");
+            throw new AccessDeniedException("ORDER_ACCESS_DENIED", "The order belongs to another store");
         }
         return order;
     }

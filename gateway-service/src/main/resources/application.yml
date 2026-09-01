@@ -31,12 +31,52 @@ spring:
               uri: lb://fulfillment-service
               predicates:
                 - Path=/api/fulfillment/**
+            - id: order-dead-letters
+              uri: lb://order-service
+              predicates:
+                - Path=/api/events/order/dead-letters
+              filters:
+                - SetPath=/internal/dead-letters
+            - id: order-dead-letter-replay
+              uri: lb://order-service
+              predicates:
+                - Path=/api/events/order/dead-letters/{id}/replay
+              filters:
+                - RewritePath=/api/events/order/dead-letters/(?<id>[^/]+)/replay, /internal/dead-letters/$\{id}/replay
+            - id: inventory-dead-letters
+              uri: lb://inventory-service
+              predicates:
+                - Path=/api/events/inventory/dead-letters
+              filters:
+                - SetPath=/internal/dead-letters
+            - id: inventory-dead-letter-replay
+              uri: lb://inventory-service
+              predicates:
+                - Path=/api/events/inventory/dead-letters/{id}/replay
+              filters:
+                - RewritePath=/api/events/inventory/dead-letters/(?<id>[^/]+)/replay, /internal/dead-letters/$\{id}/replay
+            - id: fulfillment-dead-letters
+              uri: lb://fulfillment-service
+              predicates:
+                - Path=/api/events/fulfillment/dead-letters
+              filters:
+                - SetPath=/internal/dead-letters
+            - id: fulfillment-dead-letter-replay
+              uri: lb://fulfillment-service
+              predicates:
+                - Path=/api/events/fulfillment/dead-letters/{id}/replay
+              filters:
+                - RewritePath=/api/events/fulfillment/dead-letters/(?<id>[^/]+)/replay, /internal/dead-letters/$\{id}/replay
 
 autoflow:
   security:
     jwt-secret: ${JWT_SECRET:autoflow-demo-secret-change-me-32-bytes-minimum}
 
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

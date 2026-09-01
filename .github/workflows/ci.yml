@@ -19,6 +19,5 @@ jobs:
           cache-dependency-path: web-admin/package-lock.json
       - run: chmod +x mvnw && ./mvnw clean test
       - working-directory: web-admin
-        run: npm ci && npm run build
+        run: npm ci && npm test -- --run && npm run build
       - run: docker compose config --quiet
-

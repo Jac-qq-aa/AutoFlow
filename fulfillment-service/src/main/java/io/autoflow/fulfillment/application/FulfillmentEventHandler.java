@@ -21,7 +21,7 @@ public class FulfillmentEventHandler {
             switch (event.eventType()) {
                 case EventTypes.PAYMENT_REQUESTED -> service.simulatePayment(event.aggregateId(), event.payload().path("amount").decimalValue(), event.payload().path("scenario").asText("SUCCESS"));
                 case EventTypes.REFUND_REQUESTED -> service.refund(event.aggregateId(), event.payload().path("amount").decimalValue());
-                case EventTypes.VIN_ALLOCATED -> service.createDelivery(event.aggregateId(), event.payload().path("vin").asText());
+                case EventTypes.VIN_ALLOCATED -> service.createDelivery(event.aggregateId(), event.payload().path("storeId").asText(), event.payload().path("vin").asText());
                 default -> { }
             }
         });
@@ -34,4 +34,3 @@ public class FulfillmentEventHandler {
         } catch (DuplicateKeyException duplicate) { return false; }
     }
 }
-

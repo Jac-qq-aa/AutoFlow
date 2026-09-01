@@ -30,11 +30,14 @@ public interface SalesOrderMapper extends BaseMapper<SalesOrderEntity> {
 
     @Update("""
         UPDATE sales_order
-        SET status = 'PENDING_DELIVERY', inventory_status = 'VIN_ALLOCATED', vin = #{vin},
-            fulfillment_status = 'READY', updated_at = CURRENT_TIMESTAMP, version = version + 1
-        WHERE order_id = #{orderId} AND status = 'PENDING_VIN'
+        SET inventory_status = 'VIN_ALLOCATED', vin = #{vin},
+            fulfillment_status = CASE WHEN fulfillment_status = 'NOT_STARTED' THEN 'READY' ELSE fulfillment_status END,
+            updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE order_id = #{orderId}
+          AND status NOT IN ('CANCELLING','REFUNDING','CANCELLED','CLOSED','COMPLETED')
+          AND (vin IS NULL OR vin = #{vin})
         """)
-    int allocateVin(@Param("orderId") String orderId, @Param("vin") String vin);
+    int recordVinAllocated(@Param("orderId") String orderId, @Param("vin") String vin);
 
     @Update("UPDATE sales_order SET payment_status = 'PROCESSING', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status = 'PENDING_PAYMENT' AND payment_status IN ('UNPAID','FAILED')")
     int markPaymentProcessing(String orderId);
@@ -45,13 +48,21 @@ public interface SalesOrderMapper extends BaseMapper<SalesOrderEntity> {
     @Update("UPDATE sales_order SET status = 'CLOSED', inventory_status = 'REJECTED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status = 'PENDING_STOCK'")
     int inventoryRejected(String orderId);
 
-    @Update("UPDATE sales_order SET status = 'PENDING_VIN', payment_status = 'PAID', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status = 'PENDING_PAYMENT'")
-    int paymentSucceeded(String orderId);
+    @Update("""
+        UPDATE sales_order
+        SET payment_status = 'PAID',
+            status = CASE WHEN status = 'CANCELLING' THEN 'REFUNDING' ELSE status END,
+            updated_at = CURRENT_TIMESTAMP, version = version + 1
+        WHERE order_id = #{orderId}
+          AND status IN ('PENDING_PAYMENT','CANCELLING')
+          AND payment_status <> 'PAID'
+        """)
+    int recordPaymentSucceeded(String orderId);
 
-    @Update("UPDATE sales_order SET payment_status = 'FAILED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status = 'PENDING_PAYMENT'")
-    int paymentFailed(String orderId);
+    @Update("UPDATE sales_order SET payment_status = 'FAILED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status IN ('PENDING_PAYMENT','CANCELLING') AND payment_status = 'PROCESSING'")
+    int recordPaymentFailed(String orderId);
 
-    @Update("UPDATE sales_order SET inventory_status = 'RELEASED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status = 'CANCELLING'")
+    @Update("UPDATE sales_order SET inventory_status = 'RELEASED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status IN ('CANCELLING','REFUNDING')")
     int inventoryReleased(String orderId);
 
     @Update("UPDATE sales_order SET payment_status = 'REFUNDED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status IN ('CANCELLING','REFUNDING')")
@@ -60,6 +71,21 @@ public interface SalesOrderMapper extends BaseMapper<SalesOrderEntity> {
     @Update("UPDATE sales_order SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status IN ('CANCELLING','REFUNDING') AND inventory_status IN ('NOT_RESERVED','RELEASED') AND payment_status IN ('UNPAID','FAILED','REFUNDED')")
     int finalizeCancellation(String orderId);
 
-    @Update("UPDATE sales_order SET status = 'COMPLETED', fulfillment_status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status = 'PENDING_DELIVERY'")
-    int deliveryCompleted(String orderId);
+    @Update("UPDATE sales_order SET fulfillment_status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP, version = version + 1 WHERE order_id = #{orderId} AND status NOT IN ('CANCELLING','REFUNDING','CANCELLED','CLOSED')")
+    int recordDeliveryCompleted(String orderId);
+
+    @Update("""
+        UPDATE sales_order
+        SET status = CASE
+                WHEN payment_status = 'PAID' AND vin IS NOT NULL AND fulfillment_status = 'COMPLETED' THEN 'COMPLETED'
+                WHEN payment_status = 'PAID' AND vin IS NOT NULL THEN 'PENDING_DELIVERY'
+                WHEN payment_status = 'PAID' THEN 'PENDING_VIN'
+                ELSE status
+            END,
+            updated_at = CURRENT_TIMESTAMP,
+            version = version + 1
+        WHERE order_id = #{orderId}
+          AND status NOT IN ('CANCELLING','REFUNDING','CANCELLED','CLOSED','COMPLETED')
+        """)
+    int reconcileFulfillmentState(String orderId);
 }

@@ -24,6 +24,30 @@ export interface SalesOrder {
   createdAt: string
 }
 
+export interface InventoryQuota {
+  id: number
+  storeId: string
+  modelCode: string
+  available: number
+  reserved: number
+  version: number
+  updatedAt: string
+}
+
+export interface DeadLetterEvent {
+  id: string
+  service: string
+  topic: string
+  event_id: string
+  event_type: string
+  aggregate_id: string
+  reason: string
+  status: string
+  created_at: string
+  replayed_at?: string
+  replayed_by?: string
+}
+
 const client = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '' })
 client.interceptors.request.use(config => {
   const token = localStorage.getItem('autoflow_token')
@@ -42,6 +66,32 @@ export async function login(username: string, password: string): Promise<LoginUs
 export async function listOrders(): Promise<SalesOrder[]> {
   const { data } = await client.get('/api/orders')
   return data.data
+}
+
+export async function listInventoryQuotas(storeId: string, modelCodes: string[]): Promise<InventoryQuota[]> {
+  const quotas = await Promise.all(modelCodes.map(async modelCode => {
+    try {
+      const { data } = await client.get('/api/inventory/quota', { params: { storeId, modelCode } })
+      return data.data as InventoryQuota
+    } catch (error) {
+      // A model without an initialized quota is a valid empty slot, not a page-level failure.
+      if (axios.isAxiosError(error) && error.response?.status === 409) return null
+      throw error
+    }
+  }))
+  return quotas.filter((quota): quota is InventoryQuota => quota !== null)
+}
+
+export async function listDeadLetters(): Promise<DeadLetterEvent[]> {
+  const services = ['order', 'inventory', 'fulfillment']
+  const responses = await Promise.all(services.map(service => client.get(`/api/events/${service}/dead-letters`)))
+  return responses
+    .flatMap((response, index) => response.data.map((event: Omit<DeadLetterEvent, 'service'>) => ({ ...event, service: services[index] })))
+    .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))
+}
+
+export async function replayDeadLetter(service: string, id: string): Promise<void> {
+  await client.post(`/api/events/${service}/dead-letters/${id}/replay`)
 }
 
 export async function createOrder(payload: Record<string, unknown>) {
@@ -68,4 +118,3 @@ export function logout() {
   localStorage.removeItem('autoflow_token')
   localStorage.removeItem('autoflow_user')
 }
-

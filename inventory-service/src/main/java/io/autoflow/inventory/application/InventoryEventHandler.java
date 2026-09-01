@@ -77,7 +77,8 @@ public class InventoryEventHandler {
             if (vehicles.allocate(vehicle.vin, event.aggregateId()) != 1 || reservations.markVinAllocated(event.aggregateId(), vehicle.vin) != 1) {
                 throw new IllegalStateException("VIN allocation raced");
             }
-            outbox.append(EventTypes.VIN_ALLOCATED, event.aggregateId(), Map.of("orderId", event.aggregateId(), "vin", vehicle.vin));
+            outbox.append(EventTypes.VIN_ALLOCATED, event.aggregateId(), Map.of(
+                "orderId", event.aggregateId(), "storeId", reservation.storeId, "vin", vehicle.vin));
         });
     }
 
@@ -104,4 +105,3 @@ public class InventoryEventHandler {
         } catch (DuplicateKeyException duplicate) { return false; }
     }
 }
-

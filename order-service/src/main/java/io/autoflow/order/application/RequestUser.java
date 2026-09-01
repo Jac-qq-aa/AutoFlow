@@ -1,6 +1,6 @@
 package io.autoflow.order.application;
 
-import io.autoflow.common.error.BusinessException;
+import io.autoflow.common.error.AccessDeniedException;
 import java.util.Arrays;
 
 public record RequestUser(String userId, String role, String storeId) {
@@ -10,8 +10,7 @@ public record RequestUser(String userId, String role, String storeId) {
 
     public void requireAnyRole(String... accepted) {
         if (Arrays.stream(accepted).noneMatch(role::equals)) {
-            throw new BusinessException("ROLE_ACCESS_DENIED", "Role " + role + " cannot perform this operation");
+            throw new AccessDeniedException("ROLE_ACCESS_DENIED", "Role " + role + " cannot perform this operation");
         }
     }
 }
-

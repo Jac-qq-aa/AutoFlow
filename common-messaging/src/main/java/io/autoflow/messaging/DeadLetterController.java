@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,6 +18,5 @@ public class DeadLetterController {
     public DeadLetterController(DeadLetterService service) { this.service = service; }
     @GetMapping public List<Map<String, Object>> list() { return service.list(); }
     @PostMapping("/{id}/replay") @ResponseStatus(HttpStatus.ACCEPTED)
-    public void replay(@PathVariable String id) { service.replay(id); }
+    public void replay(@PathVariable String id, @RequestHeader("X-User-Id") String userId) { service.replay(id, userId); }
 }
-

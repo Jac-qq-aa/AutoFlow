@@ -1,5 +1,8 @@
 global:
   scrape_interval: 10s
+  evaluation_interval: 10s
+rule_files:
+  - /etc/prometheus/alerts.yml
 scrape_configs:
   - job_name: gateway
     metrics_path: /actuator/prometheus
@@ -13,4 +16,3 @@ scrape_configs:
   - job_name: fulfillment
     metrics_path: /actuator/prometheus
     static_configs: [{ targets: ['fulfillment-service:8084'] }]
-

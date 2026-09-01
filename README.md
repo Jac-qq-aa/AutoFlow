@@ -15,7 +15,9 @@ AutoFlow 是一个基于真实汽车销售业务经验重新抽象的个人项�
 - Redis cache-aside 缓存订单详情，数据库始终是库存事实源；
 - Spring Security JWT + RBAC，销售人员只能访问本门店数据；
 - 支付模拟器支持成功、失败和超时；
-- Actuator、Prometheus、Grafana 提供运行指标；
+- 可扩展订单记录承载客户、收付款、退款、保险等子页面字段并保留来源和操作审计；
+- 管理员事件中心支持死信查询、人工重放和重放人审计；
+- Actuator、Prometheus、Grafana 提供业务指标、自动仪表盘和告警规则；
 - Vue 3 + TypeScript + Element Plus 管理端。
 
 ## 架构
@@ -91,6 +93,7 @@ flowchart LR
 ./mvnw.cmd clean test
 cd web-admin
 npm ci
+npm test -- --run
 npm run build
 ```
 
@@ -117,7 +120,7 @@ Docker 可用时，Testcontainers 会运行 MySQL + Redis 并发库存测试；D
 common-core/            通用响应、异常处理
 common-messaging/       RocketMQ 5.x 事件协议与客户端
 gateway-service/        网关、JWT、RBAC 用户上下文
-order-service/          渠道订单、状态机、退款编排
+order-service/          渠道订单、状态机、退款编排、子页面记录
 inventory-service/      配额预占、Redisson、VIN 分配
 fulfillment-service/    支付/退款模拟、交付任务
 web-admin/              Vue 3 管理端
@@ -125,6 +128,8 @@ infra/                  MySQL、Prometheus、Grafana 配置
 scripts/                启停、健康检查、冒烟和并发测试
 docs/                   架构、面试与简历材料
 ```
+
+Order、Inventory、Fulfillment 仅暴露在 Compose 内部网络，宿主机只能通过 Gateway 访问业务 API；内部消费接口不能绕过 JWT/RBAC 直接调用。
 
 ## 设计依据
 

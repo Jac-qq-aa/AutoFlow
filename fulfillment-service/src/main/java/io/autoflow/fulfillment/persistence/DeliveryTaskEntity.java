@@ -8,10 +8,10 @@ import java.time.LocalDateTime;
 public class DeliveryTaskEntity {
     @TableId public String taskId;
     public String orderId;
+    public String storeId;
     public String vin;
     public String status;
     public String completedBy;
     public LocalDateTime createdAt;
     public LocalDateTime completedAt;
 }
-

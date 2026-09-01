@@ -1,6 +1,7 @@
 package io.autoflow.fulfillment.api;
 
 import io.autoflow.common.api.ApiResponse;
+import io.autoflow.common.web.RequestActor;
 import io.autoflow.fulfillment.application.FulfillmentService;
 import io.autoflow.fulfillment.persistence.DeliveryTaskEntity;
 import io.autoflow.fulfillment.persistence.PaymentEntity;
@@ -23,29 +24,35 @@ public class FulfillmentController {
     public FulfillmentController(FulfillmentService service) { this.service = service; }
 
     @PostMapping("/payments")
-    ApiResponse<PaymentEntity> pay(@Valid @RequestBody PaymentRequest request) {
+    ApiResponse<PaymentEntity> pay(@Valid @RequestBody PaymentRequest request,
+                                   @RequestHeader("X-User-Role") String role) {
+        new RequestActor("", role, "*").requireAnyRole("ADMIN");
         return ApiResponse.ok(service.simulatePayment(request.orderId(), request.amount(), request.scenario()));
     }
 
     @PostMapping("/refunds")
-    ApiResponse<RefundEntity> refund(@Valid @RequestBody RefundRequest request) {
+    ApiResponse<RefundEntity> refund(@Valid @RequestBody RefundRequest request,
+                                     @RequestHeader("X-User-Role") String role) {
+        new RequestActor("", role, "*").requireAnyRole("ADMIN");
         return ApiResponse.ok(service.refund(request.orderId(), request.amount()));
     }
 
     @PostMapping("/deliveries")
-    ApiResponse<DeliveryTaskEntity> createDelivery(@Valid @RequestBody DeliveryRequest request) {
-        return ApiResponse.ok(service.createDelivery(request.orderId(), request.vin()));
+    ApiResponse<DeliveryTaskEntity> createDelivery(@Valid @RequestBody DeliveryRequest request,
+                                                    @RequestHeader("X-User-Role") String role) {
+        new RequestActor("", role, "*").requireAnyRole("ADMIN");
+        return ApiResponse.ok(service.createDelivery(request.orderId(), request.storeId(), request.vin()));
     }
 
     @PostMapping("/deliveries/{orderId}/complete")
     ApiResponse<DeliveryTaskEntity> complete(@PathVariable String orderId,
                                              @RequestHeader("X-User-Id") String userId,
-                                             @RequestHeader("X-User-Role") String role) {
-        return ApiResponse.ok(service.completeDelivery(orderId, userId, role));
+                                             @RequestHeader("X-User-Role") String role,
+                                             @RequestHeader("X-Store-Id") String storeId) {
+        return ApiResponse.ok(service.completeDelivery(orderId, new RequestActor(userId, role, storeId)));
     }
 
     record PaymentRequest(@NotBlank String orderId, @DecimalMin("0.01") BigDecimal amount, String scenario) {}
     record RefundRequest(@NotBlank String orderId, @DecimalMin("0.01") BigDecimal amount) {}
-    record DeliveryRequest(@NotBlank String orderId, @NotBlank String vin) {}
+    record DeliveryRequest(@NotBlank String orderId, @NotBlank String storeId, @NotBlank String vin) {}
 }
-

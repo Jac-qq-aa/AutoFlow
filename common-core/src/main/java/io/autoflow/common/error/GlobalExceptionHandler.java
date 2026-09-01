@@ -19,6 +19,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(exception.code(), exception.getMessage());
     }
 
+    @ExceptionHandler(AccessDeniedException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    ApiResponse<Void> accessDenied(AccessDeniedException exception) {
+        return ApiResponse.error(exception.code(), exception.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiResponse<Void> validation(MethodArgumentNotValidException exception) {
@@ -33,4 +39,3 @@ public class GlobalExceptionHandler {
         return ApiResponse.error("INTERNAL_ERROR", "The request could not be completed");
     }
 }
-

@@ -1,11 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { approveOrder, cancelOrder, completeDelivery, createOrder, listOrders, login, logout, payOrder, type LoginUser, type SalesOrder } from './api'
+import { approveOrder, cancelOrder, completeDelivery, createOrder, listDeadLetters, listInventoryQuotas, listOrders, login, logout, payOrder, replayDeadLetter, type DeadLetterEvent, type InventoryQuota, type LoginUser, type SalesOrder } from './api'
+import { modelCodes, vehicleModels } from './catalog'
+import OrderWorkspace from './views/OrderWorkspace.vue'
+import InventoryWorkspace from './views/InventoryWorkspace.vue'
+import EventWorkspace from './views/EventWorkspace.vue'
+import SettingsWorkspace from './views/SettingsWorkspace.vue'
+
+type WorkspaceView = 'orders' | 'inventory' | 'events' | 'settings'
 
 const user = ref<LoginUser | null>(JSON.parse(localStorage.getItem('autoflow_user') || 'null'))
 const orders = ref<SalesOrder[]>([])
+const inventoryQuotas = ref<InventoryQuota[]>([])
+const deadLetters = ref<DeadLetterEvent[]>([])
+const activeView = ref<WorkspaceView>('orders')
 const loading = ref(false)
+const auxiliaryLoading = ref(false)
 const loginForm = reactive({ username: 'manager', password: 'demo123' })
 const createVisible = ref(false)
 const createForm = reactive({
@@ -13,12 +24,13 @@ const createForm = reactive({
   modelCode: 'AF-SUV-PRO', amount: 219800,
 })
 
-const metrics = computed(() => ({
-  total: orders.value.length,
-  pending: orders.value.filter(order => !['COMPLETED', 'CANCELLED', 'CLOSED'].includes(order.status)).length,
-  delivery: orders.value.filter(order => order.status === 'PENDING_DELIVERY').length,
-  completed: orders.value.filter(order => order.status === 'COMPLETED').length,
-}))
+const allNavigation: Array<{ key: WorkspaceView; label: string; adminOnly?: boolean }> = [
+  { key: 'orders', label: '订单履约' },
+  { key: 'inventory', label: '库存视图' },
+  { key: 'events', label: '事件监控', adminOnly: true },
+  { key: 'settings', label: '系统设置' },
+]
+const navigation = computed(() => allNavigation.filter(item => !item.adminOnly || user.value?.role === 'ADMIN'))
 
 async function signIn() {
   try { user.value = await login(loginForm.username, loginForm.password); await refresh(); ElMessage.success('登录成功') }
@@ -29,6 +41,39 @@ async function refresh() {
   if (!user.value) return
   loading.value = true
   try { orders.value = await listOrders() } catch { ElMessage.error('订单加载失败') } finally { loading.value = false }
+}
+async function loadInventory() {
+  if (!user.value) return
+  auxiliaryLoading.value = true
+  try { inventoryQuotas.value = await listInventoryQuotas(user.value.storeId, modelCodes) }
+  catch { ElMessage.error('库存配额加载失败') }
+  finally { auxiliaryLoading.value = false }
+}
+async function loadEvents() {
+  if (user.value?.role !== 'ADMIN') return
+  auxiliaryLoading.value = true
+  try { deadLetters.value = await listDeadLetters() }
+  catch { ElMessage.error('事件监控数据加载失败') }
+  finally { auxiliaryLoading.value = false }
+}
+const viewLoaders: Partial<Record<WorkspaceView, () => Promise<void>>> = {
+  orders: refresh,
+  inventory: loadInventory,
+  events: loadEvents,
+}
+async function switchView(view: WorkspaceView) {
+  activeView.value = view
+  await viewLoaders[view]?.()
+}
+async function refreshActiveView() {
+  await viewLoaders[activeView.value]?.()
+}
+async function replayEvent(event: DeadLetterEvent) {
+  try {
+    await replayDeadLetter(event.service, event.id)
+    ElMessage.success('死信事件已提交重放')
+    await loadEvents()
+  } catch (error: any) { ElMessage.error(error.response?.data?.message || '死信重放失败') }
 }
 async function submitCreate() {
   try { await createOrder(createForm); createVisible.value = false; ElMessage.success('订单已创建，等待经理审核'); await refresh() }
@@ -48,12 +93,6 @@ async function act(action: 'approve' | 'pay' | 'cancel' | 'deliver', order: Sale
     if (action === 'deliver') await completeDelivery(order.orderId)
     ElMessage.success('操作已提交，事件正在异步流转'); setTimeout(refresh, 1200)
   } catch (error: any) { if (error !== 'cancel') ElMessage.error(error.response?.data?.message || '操作失败') }
-}
-function statusType(status: string) {
-  if (status === 'COMPLETED') return 'success'
-  if (['CANCELLED', 'CLOSED'].includes(status)) return 'info'
-  if (['REFUNDING', 'CANCELLING'].includes(status)) return 'warning'
-  return 'primary'
 }
 onMounted(refresh)
 </script>
@@ -80,44 +119,30 @@ onMounted(refresh)
   <div v-else class="app-shell">
     <aside>
       <div class="side-brand"><span>AF</span><strong>AutoFlow</strong></div>
-      <nav><a class="active">订单履约</a><a>库存视图</a><a>事件监控</a><a>系统设置</a></nav>
+      <nav>
+        <button
+          v-for="item in navigation"
+          :key="item.key"
+          type="button"
+          :class="{ active: activeView === item.key }"
+          :aria-label="item.label"
+          @click="switchView(item.key)"
+        >{{ item.label }}</button>
+      </nav>
       <div class="aside-foot"><small>{{ user.displayName }}</small><span>{{ user.role }} · {{ user.storeId }}</span><button @click="signOut">退出登录</button></div>
     </aside>
-    <main>
-      <header><div><span class="eyebrow">SALES OPERATIONS</span><h1>订单履约中心</h1><p>查看从渠道接单到车辆交付的完整状态。</p></div><div class="header-actions"><el-button @click="refresh">刷新</el-button><el-button type="primary" @click="createVisible = true">新建订单</el-button></div></header>
-      <section class="metric-grid">
-        <article><span>全部订单</span><strong>{{ metrics.total }}</strong><small>当前权限范围</small></article>
-        <article><span>履约处理中</span><strong>{{ metrics.pending }}</strong><small>等待业务动作</small></article>
-        <article><span>等待交付</span><strong>{{ metrics.delivery }}</strong><small>VIN 已分配</small></article>
-        <article><span>本期已完成</span><strong>{{ metrics.completed }}</strong><small>闭环订单</small></article>
-      </section>
-      <section class="table-card">
-        <div class="section-title"><div><h2>销售订单</h2><p>库存、支付和交付状态由领域事件异步更新</p></div><span class="live"><i></i> LIVE</span></div>
-        <el-table :data="orders" v-loading="loading" row-key="orderId">
-          <el-table-column prop="orderNo" label="订单编号" min-width="185" />
-          <el-table-column label="客户 / 渠道" min-width="150"><template #default="scope"><strong>{{ scope.row.customerName }}</strong><br /><small>{{ scope.row.channel }} · {{ scope.row.storeId }}</small></template></el-table-column>
-          <el-table-column prop="modelCode" label="车型" min-width="130" />
-          <el-table-column label="金额" min-width="110"><template #default="scope">¥ {{ Number(scope.row.amount).toLocaleString() }}</template></el-table-column>
-          <el-table-column label="主状态" min-width="135"><template #default="scope"><el-tag :type="statusType(scope.row.status) as any" effect="light">{{ scope.row.status }}</el-tag></template></el-table-column>
-          <el-table-column label="库存 / 支付" min-width="160"><template #default="scope"><small>{{ scope.row.inventoryStatus }}<br />{{ scope.row.paymentStatus }}</small></template></el-table-column>
-          <el-table-column label="操作" fixed="right" width="240"><template #default="scope">
-            <el-button v-if="scope.row.status === 'PENDING_REVIEW'" link type="primary" @click="act('approve', scope.row)">审核</el-button>
-            <el-button v-if="scope.row.status === 'PENDING_PAYMENT'" link type="primary" @click="act('pay', scope.row)">支付模拟</el-button>
-            <el-button v-if="scope.row.status === 'PENDING_DELIVERY'" link type="success" @click="act('deliver', scope.row)">完成交付</el-button>
-            <el-button v-if="!['COMPLETED','CANCELLED','CLOSED'].includes(scope.row.status)" link type="danger" @click="act('cancel', scope.row)">取消</el-button>
-          </template></el-table-column>
-        </el-table>
-      </section>
-    </main>
+    <OrderWorkspace v-if="activeView === 'orders'" :orders="orders" :loading="loading" @refresh="refresh" @create="createVisible = true" @action="act" />
+    <InventoryWorkspace v-else-if="activeView === 'inventory'" :user="user" :quotas="inventoryQuotas" :loading="auxiliaryLoading" @refresh="refreshActiveView" />
+    <EventWorkspace v-else-if="activeView === 'events'" :events="deadLetters" :loading="auxiliaryLoading" @refresh="refreshActiveView" @replay="replayEvent" />
+    <SettingsWorkspace v-else :user="user" />
   </div>
 
   <el-dialog v-model="createVisible" title="创建销售订单" width="560px">
     <el-form label-position="top">
       <div class="form-grid"><el-form-item label="销售渠道"><el-select v-model="createForm.channel"><el-option label="线下门店" value="STORE" /><el-option label="官网" value="WEBSITE" /><el-option label="小程序" value="MINI_PROGRAM" /></el-select></el-form-item><el-form-item label="门店"><el-select v-model="createForm.storeId"><el-option label="上海 001" value="STORE-SH-001" /><el-option label="北京 001" value="STORE-BJ-001" /><el-option label="深圳 001" value="STORE-SZ-001" /></el-select></el-form-item></div>
       <div class="form-grid"><el-form-item label="客户姓名"><el-input v-model="createForm.customerName" /></el-form-item><el-form-item label="联系电话"><el-input v-model="createForm.customerPhone" /></el-form-item></div>
-      <div class="form-grid"><el-form-item label="车型"><el-select v-model="createForm.modelCode"><el-option label="AutoFlow SUV Pro" value="AF-SUV-PRO" /><el-option label="AutoFlow Sedan X" value="AF-SEDAN-X" /><el-option label="AutoFlow City EV" value="AF-CITY-EV" /></el-select></el-form-item><el-form-item label="成交金额"><el-input-number v-model="createForm.amount" :min="1" :step="1000" /></el-form-item></div>
+      <div class="form-grid"><el-form-item label="车型"><el-select v-model="createForm.modelCode"><el-option v-for="model in vehicleModels" :key="model.code" :label="model.label" :value="model.code" /></el-select></el-form-item><el-form-item label="成交金额"><el-input-number v-model="createForm.amount" :min="1" :step="1000" /></el-form-item></div>
     </el-form>
     <template #footer><el-button @click="createVisible = false">取消</el-button><el-button type="primary" @click="submitCreate">提交订单</el-button></template>
   </el-dialog>
 </template>
-

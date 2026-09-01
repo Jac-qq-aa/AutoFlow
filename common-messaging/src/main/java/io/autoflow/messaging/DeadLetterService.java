@@ -30,17 +30,17 @@ public class DeadLetterService implements DeadLetterRecorder {
     }
 
     public List<Map<String, Object>> list() {
-        return jdbc.queryForList("SELECT id,topic,event_id,event_type,aggregate_id,reason,status,created_at,replayed_at FROM dead_letter_event ORDER BY created_at DESC LIMIT 200");
+        return jdbc.queryForList("SELECT id,topic,event_id,event_type,aggregate_id,reason,status,created_at,replayed_at,replayed_by FROM dead_letter_event ORDER BY created_at DESC LIMIT 200");
     }
 
     @Transactional
-    public void replay(String id) {
+    public void replay(String id, String replayedBy) {
         try {
             var row = jdbc.queryForMap("SELECT topic,event_json,status FROM dead_letter_event WHERE id = ? FOR UPDATE", id);
             if ("REPLAYED".equals(row.get("status"))) return;
             var event = objectMapper.readValue(String.valueOf(row.get("event_json")), DomainEvent.class);
             publisher.publish(String.valueOf(row.get("topic")), event);
-            jdbc.update("UPDATE dead_letter_event SET status='REPLAYED', replayed_at=CURRENT_TIMESTAMP WHERE id=?", id);
+            jdbc.update("UPDATE dead_letter_event SET status='REPLAYED', replayed_at=CURRENT_TIMESTAMP, replayed_by=? WHERE id=?", replayedBy, id);
         } catch (Exception exception) {
             throw new IllegalStateException("Dead letter replay failed", exception);
         }
@@ -51,4 +51,3 @@ public class DeadLetterService implements DeadLetterRecorder {
         return value.length() <= max ? value : value.substring(0, max);
     }
 }
-

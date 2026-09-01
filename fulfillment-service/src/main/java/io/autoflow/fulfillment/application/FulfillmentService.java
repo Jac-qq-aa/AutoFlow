@@ -1,6 +1,7 @@
 package io.autoflow.fulfillment.application;
 
 import io.autoflow.common.error.BusinessException;
+import io.autoflow.common.web.RequestActor;
 import io.autoflow.fulfillment.persistence.DeliveryTaskEntity;
 import io.autoflow.fulfillment.persistence.DeliveryTaskMapper;
 import io.autoflow.fulfillment.persistence.PaymentEntity;
@@ -66,19 +67,21 @@ public class FulfillmentService {
     }
 
     @Transactional
-    public DeliveryTaskEntity createDelivery(String orderId, String vin) {
+    public DeliveryTaskEntity createDelivery(String orderId, String storeId, String vin) {
         var existing = deliveryMapper.findByOrderId(orderId);
         if (existing != null) return existing;
         var task = new DeliveryTaskEntity(); task.taskId = UUID.randomUUID().toString(); task.orderId = orderId;
-        task.vin = vin; task.status = "PENDING"; task.createdAt = LocalDateTime.now(); deliveryMapper.insert(task); return task;
+        task.storeId = storeId; task.vin = vin; task.status = "PENDING"; task.createdAt = LocalDateTime.now(); deliveryMapper.insert(task); return task;
     }
 
     @Transactional
-    public DeliveryTaskEntity completeDelivery(String orderId, String userId, String role) {
-        if (!java.util.Set.of("DELIVERY", "ADMIN").contains(role)) throw new BusinessException("ROLE_ACCESS_DENIED", "Only delivery users can complete a delivery");
-        if (deliveryMapper.complete(orderId, userId) != 1) throw new BusinessException("DELIVERY_NOT_PENDING", "Pending delivery task not found");
-        outbox.append(EventTypes.DELIVERY_COMPLETED, orderId, Map.of("orderId", orderId, "completedBy", userId));
+    public DeliveryTaskEntity completeDelivery(String orderId, RequestActor actor) {
+        actor.requireAnyRole("DELIVERY", "ADMIN");
+        var task = deliveryMapper.findByOrderId(orderId);
+        if (task == null) throw new BusinessException("DELIVERY_NOT_FOUND", "Delivery task not found");
+        actor.requireStore(task.storeId);
+        if (deliveryMapper.complete(orderId, actor.userId()) != 1) throw new BusinessException("DELIVERY_NOT_PENDING", "Pending delivery task not found");
+        outbox.append(EventTypes.DELIVERY_COMPLETED, orderId, Map.of("orderId", orderId, "completedBy", actor.userId()));
         return deliveryMapper.findByOrderId(orderId);
     }
 }
-
